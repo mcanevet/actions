@@ -6,6 +6,7 @@ This repository is a suite of reusable Tinkerbell Actions that are used to compo
 | --- | --- |
 | [archive2disk](/archive2disk/)    | Write archives to a block device |
 | [cexec](/cexec/)                  | chroot and execute binaries |
+| [enrollsecureboot](/enrollsecureboot/) | Enroll a UEFI Secure Boot trust anchor while in Setup Mode |
 | [grub2disk](/grub2disk/)          | Write grub configs to a block device |
 | [image2disk](/image2disk/)        | Write images to a block device |
 | [kexec](/kexec/)                  | kexec to a Linux Kernel |

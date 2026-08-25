@@ -17,6 +17,7 @@ jobs:
         action:
           - archive2disk
           - cexec
+          - enrollsecureboot
           - grub2disk
           - image2disk
           - kexec

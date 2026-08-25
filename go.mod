@@ -7,6 +7,7 @@ require (
 	github.com/containerd/containerd v1.7.34
 	github.com/diskfs/go-diskfs v1.9.4
 	github.com/dustin/go-humanize v1.0.1
+	github.com/foxboron/go-uefi v0.0.0-20251010190908-d29549a44f29
 	github.com/klauspost/compress v1.19.1
 	github.com/lmittmann/tint v1.1.3
 	github.com/mattn/go-isatty v0.0.24
@@ -14,6 +15,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/peterbourgon/ff/v3 v3.4.0
 	github.com/sirupsen/logrus v1.9.4
+	github.com/spf13/afero v1.9.3
 	github.com/spf13/cobra v1.10.2
 	github.com/ulikunitz/xz v0.5.16
 	golang.org/x/sys v0.47.0
@@ -57,7 +59,9 @@ require (
 	go.opentelemetry.io/otel v1.32.0 // indirect
 	go.opentelemetry.io/otel/metric v1.32.0 // indirect
 	go.opentelemetry.io/otel/trace v1.32.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/crypto v0.52.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
+	golang.org/x/text v0.39.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241104194629-dd2ea8efbc28 // indirect
 	google.golang.org/grpc v1.68.0 // indirect
 	google.golang.org/protobuf v1.35.2 // indirect
