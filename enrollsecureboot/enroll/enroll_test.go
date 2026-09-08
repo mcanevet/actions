@@ -167,13 +167,13 @@ func TestEnroll_Success(t *testing.T) {
 		t.Fatalf("Enroll() error = %v", err)
 	}
 
-	// KEK's payload is the throwaway signer's own identity certificate, so
+	// PK's payload is the throwaway signer's own identity certificate, so
 	// read it once, unverified, to learn that identity, then use it below to
 	// actually verify every variable's PKCS7 wrapper - including db, which
 	// is signed by the same key but carries the caller-supplied certificate
 	// as its payload instead.
-	kekSigDB, _ := readVarEntry(t, memfs, "KEK-"+globalGUID)
-	signerCert, err := x509.ParseCertificate(certDER(t, kekSigDB))
+	pkSigDB, _ := readVarEntry(t, memfs, "PK-"+globalGUID)
+	signerCert, err := x509.ParseCertificate(certDER(t, pkSigDB))
 	if err != nil {
 		t.Fatalf("parsing throwaway signer certificate: %v", err)
 	}
@@ -183,14 +183,19 @@ func TestEnroll_Success(t *testing.T) {
 		t.Error("db entry does not match the supplied certificate")
 	}
 
-	kekEntry := certDER(t, readSignedVar(t, memfs, "KEK-"+globalGUID, signerCert))
 	pkEntry := certDER(t, readSignedVar(t, memfs, "PK-"+globalGUID, signerCert))
-
-	if !bytes.Equal(kekEntry, pkEntry) {
-		t.Error("KEK and PK entries should both be the same throwaway identity certificate")
+	if !bytes.Equal(pkEntry, signerCert.Raw) {
+		t.Error("PK entry should be the throwaway identity certificate")
 	}
-	if bytes.Equal(kekEntry, dbEntry) {
-		t.Error("KEK/PK entry should be the throwaway identity certificate, not the db certificate")
+	if bytes.Equal(pkEntry, dbEntry) {
+		t.Error("PK entry should be the throwaway identity certificate, not the db certificate")
+	}
+
+	// KEK is deliberately untouched: preserving the factory KEK (Microsoft's
+	// KEK included) is what keeps officially signed dbx revocation updates
+	// applicable later.
+	if _, err := memfs.Stat("/sys/firmware/efi/efivars/KEK-" + globalGUID); err == nil {
+		t.Error("KEK should not be written; the vendor factory KEK must stay intact")
 	}
 }
 
@@ -260,7 +265,7 @@ func TestEnroll_PreserveVendorCertificates(t *testing.T) {
 	// hold whatever ResetAllKeysToDefault restored.
 	vendorDBCert, vendorDBBytes := vendorFixtureSigDB(t, "vendor-oem-db")
 	writeEfivar(t, memfs, dbEfivar, dbAttrs, vendorDBBytes)
-	vendorKEKCert, vendorKEKBytes := vendorFixtureSigDB(t, "vendor-oem-kek")
+	_, vendorKEKBytes := vendorFixtureSigDB(t, "vendor-oem-kek")
 	writeEfivar(t, memfs, "KEK-"+globalGUID, dbAttrs, vendorKEKBytes)
 
 	dbCertPEM, dbCert := selfSignedCertPEM(t, "db")
@@ -279,14 +284,14 @@ func TestEnroll_PreserveVendorCertificates(t *testing.T) {
 		t.Error("newly enrolled db cert is missing")
 	}
 
-	kekSigDB, _ := readVarEntry(t, memfs, "KEK-"+globalGUID)
-	kekCerts := allCertDERs(kekSigDB)
-
-	if !containsCert(kekCerts, vendorKEKCert.Raw) {
-		t.Error("vendor cert was not preserved in KEK")
+	// KEK is deliberately untouched (Enroll no longer writes it): whatever
+	// the fixture put there must survive byte-for-byte.
+	rawKEK, err := afero.ReadFile(memfs, efivarsDir+"/KEK-"+globalGUID)
+	if err != nil {
+		t.Fatalf("reading KEK: %v", err)
 	}
-	if len(kekCerts) != 2 {
-		t.Errorf("expected vendor KEK cert + throwaway signer cert, got %d entries", len(kekCerts))
+	if !bytes.Equal(rawKEK[4:], vendorKEKBytes) {
+		t.Error("KEK was modified; it must be left at the vendor factory state")
 	}
 }
 
