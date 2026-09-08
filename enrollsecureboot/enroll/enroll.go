@@ -30,20 +30,15 @@ var ErrNotInSetupMode = errors.New("firmware is not in UEFI Setup Mode")
 var wellKnownDBCertsFS embed.FS
 
 // Options controls which certificates, beyond dbCertPEM itself, get enrolled
-// into db (and, for PreserveVendorCertificates, KEK too). Both default to
-// false: the narrowest trust set (only dbCertPEM), matching Talos's own
-// IncludeWellKnownCertificates default.
+// into db. Both default to false: the narrowest trust set (only dbCertPEM),
+// matching Talos's own IncludeWellKnownCertificates default.
 type Options struct {
 	// PreserveVendorCertificates keeps whatever is already enrolled in db
-	// and KEK (typically the vendor's factory-default sets, restored by a
+	// (typically the vendor's factory-default set, restored by a
 	// ResetAllKeysToDefault BMC action run before Enroll) instead of
-	// discarding them. This is the actual, current, machine-specific trust
+	// discarding it. This is the actual, current, machine-specific trust
 	// set - it can include vendor OEM certs no generic bundle would know
 	// about - but it isn't reproducible across different hardware/firmware.
-	// KEK isn't consulted for boot-time image/driver verification (only
-	// db/dbx are), so this isn't required to fix a "vendor driver no
-	// longer trusted" symptom - it's preserved anyway for parity with
-	// whatever else already relies on those vendor KEK entries.
 	PreserveVendorCertificates bool
 	// IncludeWellKnownCertificates additionally enrolls a small, fixed
 	// bundle of Microsoft's UEFI CA certificates (the same ones commonly
@@ -56,12 +51,15 @@ type Options struct {
 // Enroll enrolls dbCertPEM, a PEM-encoded X.509 certificate, into the db
 // signature database, trusting it to verify signed images at boot.
 //
-// PK and KEK are populated with a freshly generated, throwaway self-signed
-// keypair: nothing re-signs db/KEK afterwards, so there's no PK/KEK material
-// worth persisting, and Setup Mode accepts any well-formed signed variable
-// update regardless of whether the signing key is already trusted. Writing db
-// and KEK first, PK last, matches the sd-boot/authoritative enrollment order
-// - writing PK is what actually leaves Setup Mode.
+// KEK is deliberately not touched: KEK plays no role in boot-time image or
+// driver verification (only db/dbx are), and leaving the vendor's factory
+// KEK intact preserves Microsoft's KEK, i.e. the ability to later apply
+// officially signed dbx revocation updates. PK is populated with a freshly
+// generated, throwaway self-signed keypair: it is needed solely to exit
+// Setup Mode (writing PK is what exits), and Setup Mode accepts any
+// well-formed signed variable update regardless of whether the signing key
+// is already trusted. Writing db first, PK last, matches the
+// sd-boot/authoritative enrollment order.
 //
 // The firmware must already be in Setup Mode - reset its Secure Boot keys
 // (for example via Redfish's ResetKeys action) before calling Enroll.
@@ -84,16 +82,9 @@ func Enroll(dbCertPEM []byte, opts Options) error {
 	if err != nil {
 		return fmt.Errorf("building db signature database: %w", err)
 	}
-	kekSigDB, err := buildKEKSignatureDatabase(signerCert, opts)
-	if err != nil {
-		return fmt.Errorf("building KEK signature database: %w", err)
-	}
 
 	if err := writeSigDB(efivar.Db, dbSigDB, signerKey, signerCert); err != nil {
 		return fmt.Errorf("writing db: %w", err)
-	}
-	if err := writeSigDB(efivar.KEK, kekSigDB, signerKey, signerCert); err != nil {
-		return fmt.Errorf("writing KEK: %w", err)
 	}
 	if err := writeVar(efivar.PK, signerCert, signerKey, signerCert); err != nil {
 		return fmt.Errorf("writing PK: %w", err)
@@ -137,32 +128,8 @@ func buildDBSignatureDatabase(dbCert *x509.Certificate, opts Options) (*signatur
 	return sigDB, nil
 }
 
-// buildKEKSignatureDatabase assembles the full KEK content to write: the
-// existing (vendor) KEK entries, per opts.PreserveVendorCertificates,
-// followed by signerCert itself.
-func buildKEKSignatureDatabase(signerCert *x509.Certificate, opts Options) (*signature.SignatureDatabase, error) {
-	sigDB := signature.NewSignatureDatabase()
-
-	if opts.PreserveVendorCertificates {
-		existing, err := readExisting(efi.GetKEK)
-		if err != nil {
-			return nil, fmt.Errorf("reading existing KEK: %w", err)
-		}
-		if existing != nil {
-			sigDB.AppendDatabase(existing)
-		}
-	}
-
-	if err := appendCert(sigDB, signerCert); err != nil {
-		return nil, err
-	}
-
-	return sigDB, nil
-}
-
 // readExisting returns the current contents of a signature database (e.g.
-// efi.Getdb, efi.GetKEK), tolerating a not-yet-set variable as empty rather
-// than an error.
+// efi.Getdb), tolerating a not-yet-set variable as empty rather than an error.
 func readExisting(get func() (*signature.SignatureDatabase, error)) (*signature.SignatureDatabase, error) {
 	existing, err := get()
 	if err != nil && !errors.Is(err, os.ErrNotExist) && !errors.Is(err, fs.ErrNotExist) {
